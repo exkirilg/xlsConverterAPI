@@ -5,11 +5,11 @@ namespace Server.Reading;
 
 public class Reader : IReader
 {
-    public async Task<DataTable> ReadFileAsync(string filePath)
+    public async Task<DataTable> ReadFileAsync(string filePath, string[]? specifiedCols)
     {
-        return await Task.Run(() => ReadFile(filePath));
+        return await Task.Run(() => ReadFile(filePath, specifiedCols));
     }
-    public DataTable ReadFile(string filePath)
+    public DataTable ReadFile(string filePath, string[]? specifiedCols)
     {
         var result = new DataTable();
         var rowList = new List<string>();
@@ -25,7 +25,11 @@ public class Reader : IReader
         for (int i = 0; i < cellCount; i++)
         {
             var cell = headerRow.GetCell(i);
+            
             if (cell is null || string.IsNullOrEmpty(cell.ToString()))
+                continue;
+
+            if (UploadColumn(cell.ToString()!, specifiedCols) == false)
                 continue;
 
             result.Columns.Add(cell.ToString());
@@ -42,6 +46,9 @@ public class Reader : IReader
             {
                 var cell = row.GetCell(j);
 
+                if (UploadColumn(headerRow.GetCell(j).ToString()!, specifiedCols) == false)
+                    continue;
+
                 if (cell is null | string.IsNullOrWhiteSpace(cell!.ToString()))
                     continue;
 
@@ -56,5 +63,13 @@ public class Reader : IReader
         }
 
         return result;
+    }
+
+    private bool UploadColumn(string colName, string[]? specifiedCols)
+    {
+        if (specifiedCols is null)
+            return true;
+
+        return specifiedCols.Contains(colName.ToLower());
     }
 }

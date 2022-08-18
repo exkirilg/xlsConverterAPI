@@ -22,19 +22,20 @@ public class ConverterController : ControllerBase
     /// Returns json file with data from uploaded xls/xlsx file
     /// </summary>
     /// <param name="file"></param>
+    /// <param name="columns"></param>
     /// <returns>Json file</returns>
     /// <response code="200">Returns json file</response>
     /// <response code="400">If uploaded file is invalid</response>
     [HttpPost("[action]")]
     [ProducesResponseType(typeof(File), StatusCodes.Status200OK, MediaTypeNames.Application.Json)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest, MediaTypeNames.Text.Plain)]
-    public async Task<IActionResult> ToJson(IFormFile file)
+    public async Task<IActionResult> ToJson(IFormFile file, [FromQuery(Name = "column")] string[]? columns = null)
     {
         if (ValidateFile(file) == false)
             return BadRequest("Uploaded file has invalid extension");
 
         var xlsFilePath = await UploadToTempFile(file);
-        var data = await _reader.ReadFileAsync(xlsFilePath);
+        var data = await _reader.ReadFileAsync(xlsFilePath, NormalizeSpecifiedColumns(columns));
         
         var wrProcess = new WritingProcessor(WritingProcessor.JsonExtension);
         var byteArray = await wrProcess.WriteToByteArrayAsync(data);
@@ -68,4 +69,12 @@ public class ConverterController : ControllerBase
     }
 
     private void DeleteTempFile(string filePath) => System.IO.File.Delete(filePath);
+
+    private string[]? NormalizeSpecifiedColumns(string[]? specifiedCols)
+    {
+        if (specifiedCols is null)
+            return null;
+        
+        return specifiedCols.Select(c => c.ToLower().Trim()).ToArray();
+    }
 }
