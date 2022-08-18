@@ -5,11 +5,11 @@ namespace Server.Reading;
 
 public class Reader : IReader
 {
-    public async Task<DataTable> ReadFileAsync(string filePath, string[]? specifiedCols)
+    public async Task<DataTable> ReadFileAsync(string filePath, int headerRowOffset, string[] specifiedCols)
     {
-        return await Task.Run(() => ReadFile(filePath, specifiedCols));
+        return await Task.Run(() => ReadFile(filePath, headerRowOffset, specifiedCols));
     }
-    public DataTable ReadFile(string filePath, string[]? specifiedCols)
+    public DataTable ReadFile(string filePath, int headerRowOffset, string[] specifiedCols)
     {
         var result = new DataTable();
         var rowList = new List<string>();
@@ -18,7 +18,7 @@ public class Reader : IReader
 
         var workbook = new XSSFWorkbook(stream);
         var sheet = workbook.GetSheetAt(0);
-        var headerRow = sheet.GetRow(sheet.FirstRowNum);
+        var headerRow = sheet.GetRow(sheet.FirstRowNum + headerRowOffset);
 
         var cellCount = headerRow.LastCellNum;
 
@@ -35,7 +35,7 @@ public class Reader : IReader
             result.Columns.Add(cell.ToString());
         }
 
-        for (int i = sheet.FirstRowNum + 1; i <= sheet.LastRowNum; i++)
+        for (int i = sheet.FirstRowNum + headerRowOffset + 1; i <= sheet.LastRowNum; i++)
         {
             var row = sheet.GetRow(i);
 
@@ -65,9 +65,9 @@ public class Reader : IReader
         return result;
     }
 
-    private bool UploadColumn(string colName, string[]? specifiedCols)
+    private bool UploadColumn(string colName, string[] specifiedCols)
     {
-        if (specifiedCols is null)
+        if (specifiedCols.Any() == false)
             return true;
 
         return specifiedCols.Contains(colName.ToLower());
