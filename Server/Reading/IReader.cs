@@ -2,6 +2,6 @@
 
 public interface IReader
 {
-    Task<DataTable> ReadFileAsync(string filePath, string[]? specifiedCols);
-    DataTable ReadFile(string fileName, string[]? specifiedCols);
+    Task<DataTable> ReadFileAsync(string filePath, int headerRowOffset, string[] specifiedCols);
+    DataTable ReadFile(string fileName, int headerRowOffset, string[] specifiedCols);
 }
