@@ -27,8 +27,6 @@ builder.Services.AddSwaggerGen(options =>
         $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"));
 });
 
-builder.Services.AddScoped<IReader, Reader>();
-
 var app = builder.Build();
 
 EnsureTempFileDirectoryExists(app.Configuration);

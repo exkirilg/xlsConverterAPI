@@ -10,11 +10,9 @@ public class ConverterController : ControllerBase
     private readonly string[] _availableExtensions = new string[] { ".xls", ".xlsx" };
 
     private readonly string _tempDirectory;
-    private readonly IReader _reader;
 
-    public ConverterController(IConfiguration config, IReader reader)
+    public ConverterController(IConfiguration config)
     {
-        _reader = reader;
         _tempDirectory = Path.Combine(AppContext.BaseDirectory, config["TempDirectory"]);
     }
 
@@ -24,13 +22,14 @@ public class ConverterController : ControllerBase
     /// <param name="file"></param>
     /// <param name="columns"></param>
     /// <param name="headerRow">Index of header row in xls/xlsx file starting with 1</param>
+    /// <param name="rows">Rows indexes specification in format "1|3:10|15", starting with 1</param>
     /// <returns>Json file</returns>
     /// <response code="200">Returns json file</response>
     /// <response code="400">If uploaded file cannot be read or parameters validation error</response>
     [HttpPost("[action]")]
     [ProducesResponseType(typeof(File), StatusCodes.Status200OK, MediaTypeNames.Application.Json)]
     [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest, MediaTypeNames.Text.Plain)]
-    public async Task<IActionResult> ToJson(IFormFile file, [FromQuery(Name = "column")] string[] columns, [FromQuery] int headerRow = 1)
+    public async Task<IActionResult> ToJson(IFormFile file, [FromQuery(Name = "column")] string[] columns, [FromQuery] int headerRow = 1, [FromQuery] string? rows = null)
     {
         if (ValidateFile(file) == false)
             return BadRequest("Uploaded file has invalid extension");
@@ -40,18 +39,22 @@ public class ConverterController : ControllerBase
 
         string xlsFilePath = GetTempFilePath(file);
 
-        byte[]? result = null; 
+        byte[]? result = null;
+        string exMessage = string.Empty;
 
         try
         {
+            IReader reader = new Reader(xlsFilePath, headerRow - 1, columns, rows);
+
             await UploadToTempFile(file, xlsFilePath);
-            var data = await _reader.ReadFileAsync(xlsFilePath, headerRow - 1, NormalizeSpecifiedColumns(columns));
+            var data = await reader.ReadFileAsync();
 
             var wrProcess = new WritingProcessor(WritingProcessor.JsonExtension);
             result = await wrProcess.WriteToByteArrayAsync(data);
         }
         catch (Exception ex)
         {
+            exMessage = ex.Message;
             Console.WriteLine(ex);
         }
         finally
@@ -60,7 +63,7 @@ public class ConverterController : ControllerBase
         }
 
         if (result is null)
-            return BadRequest("Cannot read file");
+            return BadRequest($"Cannot read file: {exMessage}");
 
         return File(result, "text/json", GetNewFileName(file.FileName, WritingProcessor.JsonExtension));
     }
@@ -90,9 +93,4 @@ public class ConverterController : ControllerBase
     }
 
     private void DeleteTempFile(string filePath) => System.IO.File.Delete(filePath);
-
-    private string[] NormalizeSpecifiedColumns(string[] specifiedCols)
-    {
-        return specifiedCols.Select(c => c.ToLower().Trim()).ToArray();
-    }
 }
