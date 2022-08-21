@@ -6,7 +6,6 @@ namespace Server.Reading;
 public class Reader : IReader
 {
     private string _filePath = string.Empty;
-    private string[]? _specifiedColumns = null;
 
     public string FilePath
     {
@@ -23,32 +22,19 @@ public class Reader : IReader
         }
     }
     public int HeaderRowOffset { get; private set; }
-    public string[]? SpecifiedColumns
-    {
-        get => _specifiedColumns;
-        private set
-        {
-            if (value is null)
-            {
-                _specifiedColumns = null;
-                return;
-            }
-
-            _specifiedColumns = value.Select(c => c.ToLower().Trim()).ToArray();
-        }
-    }
+    public string? ColumnsSpecification { get; private set; }
     public string? RowsSpecification { get; private set; }
 
-    public Reader(string filePath, int headerRowOffset = 0, string[]? specifiedColumns = null, string? rowsSpecification = null)
+    public Reader(string filePath, int headerRowOffset = default, string? columnsSpecification = default, string? rowsSpecification = default)
     {
         FilePath = filePath;
         HeaderRowOffset = headerRowOffset;
-        SpecifiedColumns = specifiedColumns;
+        ColumnsSpecification = columnsSpecification;
         RowsSpecification = rowsSpecification;
     }
 
     public async Task<DataTable> ReadFileAsync() => await Task.Run(() => ReadFile());
-    
+
     private DataTable ReadFile()
     {
         DataTable result = new();
@@ -75,31 +61,11 @@ public class Reader : IReader
     {
         Dictionary<int, DataColumn> result = new();
 
-        for (int i = 0; i < header.LastCellNum; i++)
-        {
-            string colName = header.GetCell(i).ToString()!;
-            
-            if (ColumnIsSpecified(i + 1, colName))
-            {
-                result.Add(i + 1, new DataColumn(colName));
-            }           
-        }
+        foreach (var i in ParseColumnsSpecification(header))
+            result.Add(i, new DataColumn(header.GetCell(i - 1).ToString()));
 
         return result;
     }
-
-    private bool ColumnIsSpecified(int columnOneBasedIndex, string columnName)
-    {
-        if (SpecifiedColumns is null || SpecifiedColumns.Any() == false)
-            return true;
-
-        return SpecifiedColumns
-            .Where(
-                c => c.Equals(columnName?.ToLower()) ||
-                (int.TryParse(c, out int specInt) && specInt == columnOneBasedIndex))
-            .Any();
-    }
-
     private List<string[]> ReadDataRows(ISheet sheet, int[] columnsZeroBasedIndexes)
     {
         List<string[]> result = new();
@@ -134,6 +100,40 @@ public class Reader : IReader
         return result;
     }
 
+    private int[] ParseColumnsSpecification(IRow header)
+    {
+        List<int> result = new();
+
+        if (string.IsNullOrWhiteSpace(ColumnsSpecification))
+            return Enumerable.Range(1, header.LastCellNum).ToArray();
+
+        string[] cols = new string[header.LastCellNum];
+        for (int i = 0; i < cols.Length; i++)
+            cols[i] = header.GetCell(i).ToString()!.ToLower().Trim();
+
+        foreach (var range in ColumnsSpecification.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int index = Array.IndexOf(cols, range.ToLower().Trim());
+            if (index != -1)
+            {
+                result.Add(index + 1);
+                continue;
+            }
+
+            var (start, end) = ParseRange(range, 1, header.LastCellNum);
+
+            if (start < 1)
+                throw new ArgumentException($"Starting column cannot be less then 1: {range}");
+
+            if (end < start)
+                throw new ArgumentException($"Ending column cannot be less then starting column: {range}");
+
+            for (var i = start; i <= end; i++)
+                result.Add(i);
+        }
+
+        return result.Distinct().ToArray();
+    }
     private int[] ParseRowsSpecification(int firstRow, int lastRow)
     {
         List<int> result = new();
@@ -143,30 +143,37 @@ public class Reader : IReader
 
         foreach (var range in RowsSpecification.Split('|', StringSplitOptions.RemoveEmptyEntries))
         {
-            int start, end;
-            var separatorPos = range.IndexOf(':');
-
-            if (separatorPos == -1)
-                start = end = int.Parse(range);
-            else
-            {
-                var strStart = range.Substring(0, separatorPos);
-                var strEnd = range.Substring(separatorPos + 1);
-
-                start = string.IsNullOrWhiteSpace(strStart) ? firstRow : int.Parse(strStart);
-                end = string.IsNullOrWhiteSpace(strEnd) ? lastRow : int.Parse(strEnd);
-            }
+            var (start, end) = ParseRange(range, firstRow, lastRow);
 
             if (start < 1)
-                throw new ArgumentException("Starting row cannot be less then 1");
+                throw new ArgumentException($"Starting row cannot be less then 1: {range}");
 
             if (end < start)
-                throw new ArgumentException("Ending row cannot be less then starting row");
+                throw new ArgumentException($"Ending row cannot be less then starting row: {range}");
 
             for (var i = start; i <= end; i++)
                 result.Add(i);
         }
 
         return result.Distinct().ToArray();
+    }
+    private (int start, int end) ParseRange(string range, int defStart, int defEnd)
+    {
+        (int start, int end) result = (0, 0);
+
+        var separatorPos = range.IndexOf(':');
+
+        if (separatorPos == -1)
+            result.start = result.end = int.Parse(range);
+        else
+        {
+            var strStart = range.Substring(0, separatorPos);
+            var strEnd = range.Substring(separatorPos + 1);
+
+            result.start = string.IsNullOrWhiteSpace(strStart) ? defStart : int.Parse(strStart);
+            result.end = string.IsNullOrWhiteSpace(strEnd) ? defEnd : int.Parse(strEnd);
+        }
+
+        return result;
     }
 }
