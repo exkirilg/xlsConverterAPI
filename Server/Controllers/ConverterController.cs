@@ -20,9 +20,9 @@ public class ConverterController : ControllerBase
     /// Returns json file with data from uploaded xls/xlsx file
     /// </summary>
     /// <param name="file"></param>
-    /// <param name="columns"></param>
-    /// <param name="headerRow">Index of header row in xls/xlsx file starting with 1</param>
-    /// <param name="rows">Rows indexes specification in format "1|3:10|15", starting with 1</param>
+    /// <param name="columns">Columns names or indexes (starting with 1)</param>
+    /// <param name="headerRow">Header row index (starting with 1)</param>
+    /// <param name="rows">Rows indexes specification in format "1|3:10|15" (starting with 1)</param>
     /// <returns>Json file</returns>
     /// <response code="200">Returns json file</response>
     /// <response code="400">If uploaded file cannot be read or parameters validation error</response>
