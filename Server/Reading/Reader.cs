@@ -51,36 +51,65 @@ public class Reader : IReader
     
     private DataTable ReadFile()
     {
-        var result = new DataTable();
-        var rowList = new List<string>();
+        DataTable result = new();
+        List<string> rowList = new();
 
-        using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read);
+        using FileStream stream = new(FilePath, FileMode.Open, FileAccess.Read);
 
-        var workbook = new XSSFWorkbook(stream);
-        var sheet = workbook.GetSheetAt(0);
+        XSSFWorkbook workbook = new(stream);
+        ISheet sheet = workbook.GetSheetAt(0);
 
-        var headerRowIndex = sheet.FirstRowNum + HeaderRowOffset;
-        var headerRow = sheet.GetRow(headerRowIndex);
+        var columns = ReadHeader(sheet.GetRow(sheet.FirstRowNum + HeaderRowOffset));
+        var rows = ReadDataRows(sheet, columns.Keys.Select(c => c - 1).ToArray());
 
-        var cellCount = headerRow.LastCellNum;
-        
-        for (int i = 0; i < cellCount; i++)
+        result.Columns.AddRange(columns.Values.ToArray());
+        foreach (var row in rows)
         {
-            var cell = headerRow.GetCell(i);
-            
-            if (cell is null || string.IsNullOrEmpty(cell.ToString()))
-                continue;
-
-            if (UploadColumn(cell.ToString()!) == false)
-                continue;
-
-            result.Columns.Add(cell.ToString());
+            result.Rows.Add(row);
         }
 
-        int firstRowIndex = headerRowIndex + 1;
-        int[] rows = ParseRowsSpecification(firstRowIndex + 1, sheet.PhysicalNumberOfRows);
+        return result;
+    }
 
-        for (int i = firstRowIndex; i <= sheet.PhysicalNumberOfRows; i++)
+    private Dictionary<int, DataColumn> ReadHeader(IRow header)
+    {
+        Dictionary<int, DataColumn> result = new();
+
+        for (int i = 0; i < header.LastCellNum; i++)
+        {
+            string colName = header.GetCell(i).ToString()!;
+            
+            if (ColumnIsSpecified(i + 1, colName))
+            {
+                result.Add(i + 1, new DataColumn(colName));
+            }           
+        }
+
+        return result;
+    }
+
+    private bool ColumnIsSpecified(int columnOneBasedIndex, string columnName)
+    {
+        if (SpecifiedColumns is null || SpecifiedColumns.Any() == false)
+            return true;
+
+        return SpecifiedColumns
+            .Where(
+                c => c.Equals(columnName?.ToLower()) ||
+                (int.TryParse(c, out int specInt) && specInt == columnOneBasedIndex))
+            .Any();
+    }
+
+    private List<string[]> ReadDataRows(ISheet sheet, int[] columnsZeroBasedIndexes)
+    {
+        List<string[]> result = new();
+
+        int firstDataRowIndex = sheet.FirstRowNum + HeaderRowOffset + 1;
+        int[] rows = ParseRowsSpecification(firstDataRowIndex + 1, sheet.PhysicalNumberOfRows);
+
+        List<string> rowData = new();
+
+        for (int i = firstDataRowIndex; i <= sheet.PhysicalNumberOfRows; i++)
         {
             if (rows.Contains(i + 1) == false)
                 continue;
@@ -90,35 +119,19 @@ public class Reader : IReader
             if (row is null || row.Cells.All(c => c.CellType == CellType.Blank))
                 continue;
 
-            for (int j = row.FirstCellNum; j < cellCount; j++)
+            for (int j = row.FirstCellNum; j < row.LastCellNum; j++)
             {
-                if (UploadColumn(headerRow.GetCell(j).ToString()!) == false)
+                if (columnsZeroBasedIndexes.Contains(j) == false)
                     continue;
 
-                var cell = row.GetCell(j);
-
-                if (cell is null | string.IsNullOrWhiteSpace(cell!.ToString()))
-                    continue;
-
-                rowList.Add(cell.ToString()!);
+                rowData.Add(row.GetCell(j).ToString()!);
             }
 
-            if (rowList.Any())
-            {
-                result.Rows.Add(rowList.ToArray());
-                rowList.Clear();
-            }
+            result.Add(rowData.ToArray());
+            rowData.Clear();
         }
 
         return result;
-    }
-
-    private bool UploadColumn(string columnName)
-    {
-        if (SpecifiedColumns is null || SpecifiedColumns.Any() == false)
-            return true;
-
-        return SpecifiedColumns.Contains(columnName.ToLower());
     }
 
     private int[] ParseRowsSpecification(int firstRow, int lastRow)
